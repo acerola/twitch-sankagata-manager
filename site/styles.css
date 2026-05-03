@@ -118,32 +118,50 @@ button { font-family: inherit; cursor: pointer; }
 .nav-inner {
   max-width: var(--maxw); margin: 0 auto;
   padding: 14px var(--pad-x);
-  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: clamp(14px, 2vw, 24px);
+  min-width: 0;
 }
 .brand {
   display: flex; align-items: center; gap: 10px;
   font-family: var(--font-display); font-weight: 800;
   letter-spacing: -0.01em;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .brand img {
   width: 32px; height: 32px; border-radius: 8px;
   filter: drop-shadow(0 4px 12px rgba(255,79,163,0.35));
 }
-.brand-name { font-size: 16px; }
+.brand-name {
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .brand-name .jp { color: var(--mute); font-weight: 500; font-size: 12px; margin-left: 6px; font-family: var(--font-jp); }
 
-.nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--mute); }
+.nav-links {
+  display: flex;
+  flex: 0 1 auto;
+  justify-content: center;
+  gap: clamp(14px, 2.2vw, 28px);
+  min-width: 0;
+  font-size: 14px;
+  color: var(--mute);
+  white-space: nowrap;
+}
+.nav-links a { white-space: nowrap; }
 .nav-links a:hover { color: var(--paper); }
 
-.nav-cta { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
+.nav-cta { display: flex; flex: 0 0 auto; gap: 8px; align-items: center; flex-wrap: nowrap; }
 
-@media (max-width: 760px) {
+@media (max-width: 1200px) {
+  .nav-cta .nav-btn-cta { display: none; }
+}
+@media (max-width: 900px) {
   .nav-links { display: none; }
 }
 @media (max-width: 600px) {
-  /* Lang-pill stays — Download/GitHub already in hero, removing them keeps
-     nav single-row instead of wrapping the pill below the brand. */
-  .nav-cta .nav-btn-cta { display: none; }
   .brand-name { font-size: 14px; }
 }
 
