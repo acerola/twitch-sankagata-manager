@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-05-03
+
 ### Changed
 - Renamed the app, package, bundle, release assets, site copy, and repository links to Twitch Sankagata Manager / `twitch-sankagata-manager`.
 - Renamed the default theme id to `twitch` while accepting the old `mumamuma` value for existing saved config.
@@ -96,7 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Pipeline: `subscribe()` was using a stale access token after refresh; now uses the freshest value.
 - Overlay window initial height was a fixed 460px regardless of content; switched to `ResizeObserver` + `setSize` driven by `scrollHeight`.
 
-[Unreleased]: https://github.com/acerola/twitch-sankagata-manager/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/acerola/twitch-sankagata-manager/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/acerola/twitch-sankagata-manager/releases/tag/v0.2.5
 [0.2.4]: https://github.com/acerola/twitch-sankagata-manager/compare/v0.2.3...v0.2.4
 [0.1.10]: https://github.com/acerola/twitch-sankagata-manager/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/acerola/twitch-sankagata-manager/compare/v0.1.8...v0.1.9
