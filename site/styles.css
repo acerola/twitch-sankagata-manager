@@ -125,8 +125,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; gap: 10px;
   font-family: var(--font-display); font-weight: 800;
   letter-spacing: -0.01em;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
 }
 .brand img {
   width: 32px; height: 32px; border-radius: 8px;
@@ -134,8 +133,6 @@ button { font-family: inherit; cursor: pointer; }
 }
 .brand-name {
   font-size: 16px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .brand-name .jp { color: var(--mute); font-weight: 500; font-size: 12px; margin-left: 6px; font-family: var(--font-jp); }
@@ -163,6 +160,9 @@ button { font-family: inherit; cursor: pointer; }
 }
 @media (max-width: 600px) {
   .brand-name { font-size: 14px; }
+}
+@media (max-width: 440px) {
+  .nav-cta { display: none; }
 }
 
 /* ============ BUTTONS ============ */
