@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Twitch Sankagata Manager",
+  "version": "0.2.4",
+  "identifier": "com.twitch.sankagata.manager",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Twitch Sankagata Manager",
+        "width": 1200,
+        "height": 620,
+        "minWidth": 1100,
+        "minHeight": 620,
+        "decorations": false,
+        "dragDropEnabled": false
+      },
+      {
+        "label": "overlay",
+        "title": "Overlay",
+        "width": 340,
+        "height": 120,
+        "minWidth": 340,
+        "minHeight": 60,
+        "maxWidth": 340,
+        "maxHeight": 1200,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": false,
+        "url": "overlay.html",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/acerola/twitch-sankagata-manager/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZFNjc1NUM3RDkxMzQzM0EKUldRNlF4UFp4MVZuL25FQzFJS3pkQnU1eVdseVB0dm56ZmZWU3VnREN0RzFhbWZSSUY1OWJjUVgK"
+    }
+  }
+}

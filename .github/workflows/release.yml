@@ -1,0 +1,202 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ""
+            rust-target: ""
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+            rust-target: "aarch64-apple-darwin,x86_64-apple-darwin"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+      - name: install frontend deps
+        run: bun install
+
+      # Ensure a draft release exists before any matrix job tries to upload.
+      # Idempotent — first job creates it, others see it and continue.
+      - name: ensure draft release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --draft \
+              --title "Twitch Sankagata Manager ${GITHUB_REF_NAME}" \
+              --notes "Build in progress."
+          fi
+
+      - name: tauri build
+        shell: bash
+        env:
+          # The secret value may be base64 from `base64 < key`, which wraps
+          # at 76 chars. Native tauri-cli rejects embedded newlines/CRs/
+          # spaces in the key. Strip them before exporting.
+          TAURI_SIGNING_PRIVATE_KEY_RAW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+        run: |
+          export TAURI_SIGNING_PRIVATE_KEY="$(printf %s "$TAURI_SIGNING_PRIVATE_KEY_RAW" | tr -d '\r\n ')"
+          bun run tauri build ${{ matrix.args }}
+
+      # Collect every bundle artifact and signature into out/ and sigs/.
+      # Native tauri build leaves all of them in src-tauri/target/.../release/bundle/
+      # so we own the layout end-to-end now (no tauri-action surprises).
+      - name: collect outputs
+        shell: bash
+        run: |
+          set -x
+          mkdir -p out sigs
+
+          # macos-latest still ships bash 3.2 — no globstar. Use find
+          # with -print0/while-read to handle filenames with spaces.
+
+          # Bundles: rename spaces to dots in filenames so URL is clean.
+          while IFS= read -r -d '' f; do
+            cp "$f" "out/$(basename "$f" | tr ' ' '.')"
+          done < <(find src-tauri/target -type f \
+            \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' \
+               -o -name '*.app.tar.gz' -o -name '*.nsis.zip' \
+               -o -name '*.msi.zip' \) \
+            -path '*/release/bundle/*' -print0)
+
+          # Sig files for the updater manifest aggregator job.
+          while IFS= read -r -d '' s; do
+            cp "$s" sigs/
+          done < <(find src-tauri/target -type f -name '*.sig' \
+            -path '*/release/bundle/*' -print0)
+
+          echo "--- out/ ---"
+          ls -la out/
+          echo "--- sigs/ ---"
+          ls -la sigs/
+
+      - name: build portable zip (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $exe = Get-ChildItem -Path src-tauri/target/release -Filter '*.exe' -File |
+                 Where-Object { $_.Name -notlike '*setup*' -and $_.Name -notlike '*deps*' } |
+                 Select-Object -First 1
+          if (-not $exe) { throw "no standalone .exe found" }
+          $marker = Join-Path $env:RUNNER_TEMP "portable.txt"
+          Set-Content -Path $marker -Value "Portable build. Download a new portable ZIP to update." -NoNewline
+          $zipName = "out/Twitch.Sankagata.Manager_${version}_x64_portable.zip"
+          Compress-Archive -Path $exe.FullName, $marker -DestinationPath $zipName -Force
+
+      - name: upload bundles to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          for f in out/*; do
+            gh release upload "${GITHUB_REF_NAME}" "$f" --repo "${GITHUB_REPOSITORY}" --clobber
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sigs-${{ matrix.os }}
+          path: sigs/
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: sigs
+          pattern: sigs-*
+          merge-multiple: true
+
+      - name: set release notes from CHANGELOG.md
+        if: hashFiles('CHANGELOG.md') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="${VERSION}" '
+            $0 ~ "^## \\[" v "\\]" { flag=1; print; next }
+            flag && $0 ~ "^## \\[" { exit }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::warning::no CHANGELOG section for ${VERSION}; skipping notes update"
+            exit 0
+          fi
+          gh release edit "${GITHUB_REF_NAME}" --notes-file release-notes.md --repo "${GITHUB_REPOSITORY}"
+
+      - name: build + upload latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la sigs/ || true
+          VERSION="${GITHUB_REF_NAME#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          NOTES="See full release notes at https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}"
+
+          read_sig() {
+            local pattern="$1"
+            local f
+            f=$(ls sigs/${pattern} 2>/dev/null | head -1)
+            [ -n "$f" ] && tr -d '\n' < "$f"
+          }
+
+          # Tauri v2 with createUpdaterArtifacts signs the NSIS .exe
+          # installer directly on Windows (no .nsis.zip wrapper).
+          WIN_SIG="$(read_sig '*x64-setup.exe.sig')"
+          MAC_SIG="$(read_sig '*app.tar.gz.sig')"
+
+          if [ -z "$WIN_SIG" ] || [ -z "$MAC_SIG" ]; then
+            echo "::error::missing signatures (win=$([ -n "$WIN_SIG" ] && echo yes || echo no), mac=$([ -n "$MAC_SIG" ] && echo yes || echo no))"
+            exit 1
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "$NOTES" \
+            --arg pubdate "$PUB_DATE" \
+            --arg winsig "$WIN_SIG" \
+            --arg macsig "$MAC_SIG" \
+            --arg winurl "${BASE}/Twitch.Sankagata.Manager_${VERSION}_x64-setup.exe" \
+            --arg macurl "${BASE}/Twitch.Sankagata.Manager.app.tar.gz" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pubdate,
+              platforms: {
+                "windows-x86_64": { signature: $winsig, url: $winurl },
+                "darwin-x86_64":  { signature: $macsig, url: $macurl },
+                "darwin-aarch64": { signature: $macsig, url: $macurl }
+              }
+            }' > latest.json
+
+          cat latest.json
+          gh release upload "${GITHUB_REF_NAME}" latest.json --repo "${GITHUB_REPOSITORY}" --clobber
+
+      - name: publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${GITHUB_REF_NAME}" --draft=false --latest --repo "${GITHUB_REPOSITORY}"
